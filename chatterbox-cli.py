@@ -88,7 +88,7 @@ def generate_output_filename(base="output", ext=".wav", ex=None, cfg=None, seed=
 
 def main():
     parser = argparse.ArgumentParser(description="Generate TTS with Chatterbox.")
-    # ... other arguments ...
+    # ... (all arguments remain the same) ...
     parser.add_argument('-f', '--file', type=str, help='Single reference WAV file for voice cloning')
     parser.add_argument('--batch-dir', action='store_true',
                         help='Loop through all .wav files in ./source and apply the script to each')
@@ -113,6 +113,9 @@ def main():
 
     args = parser.parse_args()
 
+    if args.max_length > 475:
+        __builtins__.print(f"{TermColors.YELLOW}[WARNING]{TermColors.RESET} max-length is set to {args.max_length}, which is above the recommended safe limit of 475. This may cause audio generation issues.")
+
     if args.silent:
         def log(*args, **kwargs):
             pass
@@ -136,7 +139,7 @@ def main():
         log(f"{TermColors.BLUE}[INFO]{TermColors.RESET} Using random seed: {args.seed} and enabling deterministic mode.")
         
         random.seed(args.seed)
-        np.random.seed(args.seed % (2**32)) # Use modulo for numpy compatibility
+        np.random.seed(args.seed)
         torch.manual_seed(args.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(args.seed)
@@ -169,13 +172,17 @@ def main():
 
     text_chunks = split_text_into_sentences(text_input, args.max_length)
 
+    # <<< START MODIFIED BLOCK
+    # Create the output directory here to ensure it always exists.
+    output_dir = "./output"
+    os.makedirs(output_dir, exist_ok=True)
+    # <<< END MODIFIED BLOCK
+
     if args.batch_dir:
         source_dir = "./source"
         if not os.path.isdir(source_dir):
             __builtins__.print(f"{TermColors.RED}[ERROR]{TermColors.RESET} Source directory for batch mode not found: {source_dir}")
             return
-        output_dir = "./output"
-        os.makedirs(output_dir, exist_ok=True)
         voice_files = sorted([
             os.path.join(source_dir, f)
             for f in os.listdir(source_dir)
@@ -199,10 +206,7 @@ def main():
             if args.chaos:
                 delta = args.chaos * 0.1
                 ex = max(0.0, min(args.exaggeration + random.uniform(-delta, delta), 1.5))
-                # <<< START MODIFIED BLOCK
-                # Ensure cfg is always slightly positive to avoid the bug
                 cfg = max(0.0001, min(args.cfg + random.uniform(-delta, delta), 1.0))
-                # <<< END MODIFIED BLOCK
             else:
                 ex = args.exaggeration
                 cfg = args.cfg
@@ -238,7 +242,8 @@ def main():
                 base, _ = os.path.splitext(args.output)
             elif voice_path:
                 voice_base = os.path.splitext(os.path.basename(voice_path))[0]
-                base = os.path.join("./output", voice_base)
+                # <<< MODIFIED: Use the output_dir variable
+                base = os.path.join(output_dir, voice_base)
             else:
                 base = "output"
 
