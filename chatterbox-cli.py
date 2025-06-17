@@ -113,18 +113,11 @@ def main():
 
     args = parser.parse_args()
 
-    if args.max_length > 475:
-        __builtins__.print(f"{TermColors.YELLOW}[WARNING]{TermColors.RESET} max-length is set to {args.max_length}, which is above the recommended safe limit of 475. This may cause audio generation issues.")
-
     if args.silent:
         def log(*args, **kwargs):
             pass
     else:
         log = print
-
-    if args.random_seed:
-        args.seed = random.randint(0, 2**32 - 1)
-        log(f"{TermColors.BLUE}[INFO]{TermColors.RESET} Generated random seed: {args.seed}")
 
     if args.debug:
         suppress_context_factory = null_context
@@ -134,20 +127,7 @@ def main():
         warnings.filterwarnings("ignore", message=".*LlamaModel is using LlamaSdpaAttention.*")
         warnings.filterwarnings("ignore", message=".*We detected that you are passing `past_key_values`.*")
         suppress_context_factory = suppress_stderr
-
-    if args.seed is not None:
-        log(f"{TermColors.BLUE}[INFO]{TermColors.RESET} Using random seed: {args.seed} and enabling deterministic mode.")
-        
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(args.seed)
-        
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-        torch.use_deterministic_algorithms(True)
-
+    
     text_input = ""
     if args.script:
         try:
@@ -172,17 +152,13 @@ def main():
 
     text_chunks = split_text_into_sentences(text_input, args.max_length)
 
-    # <<< START MODIFIED BLOCK
-    # Create the output directory here to ensure it always exists.
-    output_dir = "./output"
-    os.makedirs(output_dir, exist_ok=True)
-    # <<< END MODIFIED BLOCK
-
     if args.batch_dir:
         source_dir = "./source"
         if not os.path.isdir(source_dir):
             __builtins__.print(f"{TermColors.RED}[ERROR]{TermColors.RESET} Source directory for batch mode not found: {source_dir}")
             return
+        output_dir = "./output"
+        os.makedirs(output_dir, exist_ok=True)
         voice_files = sorted([
             os.path.join(source_dir, f)
             for f in os.listdir(source_dir)
@@ -192,6 +168,31 @@ def main():
         voice_files = [args.file]
 
     for run in range(args.repeat):
+        # <<< START MODIFIED BLOCK: Seeding logic is now inside the repeat loop
+        
+        # A copy of the seed argument is made to be potentially modified for this run
+        current_run_seed = args.seed
+
+        if args.random_seed:
+            current_run_seed = random.randint(0, 2**32 - 1)
+            log(f"{TermColors.BLUE}[INFO]{TermColors.RESET} Run {run + 1}: Generated random seed: {current_run_seed}")
+        
+        if current_run_seed is not None:
+            # If we are on run 1, print the main info message.
+            if run == 0:
+                 log(f"{TermColors.BLUE}[INFO]{TermColors.RESET} Using random seed: {current_run_seed} and enabling deterministic mode.")
+            
+            random.seed(current_run_seed)
+            np.random.seed(current_run_seed)
+            torch.manual_seed(current_run_seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(current_run_seed)
+            
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+            torch.use_deterministic_algorithms(True)
+        # <<< END MODIFIED BLOCK
+
         for voice_path in voice_files:
             voice_label = os.path.basename(voice_path) if voice_path else "none"
             log(f"\n{TermColors.BLUE}[INFO]{TermColors.RESET} Run {run + 1} - Voice: {voice_label}")
@@ -220,7 +221,7 @@ def main():
                     "text": chunk,
                     "exaggeration": ex,
                     "cfg_weight": cfg,
-                    "seed": args.seed,
+                    "seed": current_run_seed, # Use the seed for the current run
                     "repetition_penalty": args.repetition_penalty,
                     "temperature": args.temperature,
                     "top_p": args.top_p,
@@ -242,12 +243,11 @@ def main():
                 base, _ = os.path.splitext(args.output)
             elif voice_path:
                 voice_base = os.path.splitext(os.path.basename(voice_path))[0]
-                # <<< MODIFIED: Use the output_dir variable
-                base = os.path.join(output_dir, voice_base)
+                base = os.path.join("./output", voice_base)
             else:
                 base = "output"
 
-            output_path = generate_output_filename(base, ex=ex, cfg=cfg, seed=args.seed)
+            output_path = generate_output_filename(base, ex=ex, cfg=cfg, seed=current_run_seed) # Use the seed for the current run
             
             peak_value = torch.max(torch.abs(combined))
             if peak_value > 1.0:
