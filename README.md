@@ -40,14 +40,7 @@ This tool was designed for users who need to generate high-quality audio from lo
     source venv/bin/activate
     ```
 
-3.  **Install Dependencies:**
-    This script relies on `chatterbox-tts` and its dependencies. Install them via pip.
-    ```bash
-    pip install chatterbox-tts torch torchaudio numpy
-    ```
-    *Note: For GPU acceleration, ensure you have a compatible NVIDIA driver and CUDA toolkit installed before installing PyTorch. Visit the [PyTorch website](https://pytorch.org/get-started/locally/) for the correct installation command for your system.*
-
-3. Install Dependencies
+3. **Install Dependencies:**
 
     This script relies on a specific fork of chatterbox-tts and must be installed directly from the GitHub repository.
 
@@ -91,6 +84,24 @@ The script is run from the command line, providing various arguments to control 
 | `--debug`               | `False` | Disable all warning suppression to show library warnings and progress bars.                  |
 | `--silent`              | `False` | Suppress all informational console output for a quiet run.                                 |
 
+### Directories
+
+**1. Source**
+
+    The source directory is where your sample audio files should be located.  Placing them there allows for
+    the script to cycle through all of them with the --batch-dir command.
+    ```
+    mkdir source
+    ```
+
+**2. Output**
+
+    The output directory is automatically created by running the script without the -o flag.  You can make it
+    ahead of time if you prefer.
+    ```
+    mkdir output
+    ```
+
 ### Examples
 
 **1. Basic Generation with Voice Clone**
@@ -98,7 +109,8 @@ The script is run from the command line, providing various arguments to control 
 python3 chatterbox-cli.py -f ./source/my_voice.wav --script ./my_book.txt -o my_book_audio
 ```
 
-**2. Highly Reproducible Generation with Fine-Tuning
+**2. Highly Reproducible Generation with Fine-Tuning**
+
 This command uses a specific seed and tweaks the generation parameters for a specific style.
 ```
 CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py \
@@ -111,7 +123,8 @@ CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py \
   --max-length 450
 ```
 
-**3. Creative Run with a Random Seed
+**3. Creative Run with a Random Seed**
+
 This generates a new, unique output and prints the seed used so you can reproduce it later if you like the result.
 ```
 CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py \
@@ -121,7 +134,8 @@ CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py \
   --chaos 2.0
 ```
 
-**4. Batch Processing
+**4. Batch Processing**
+
 This will generate an audio file for every .wav file found in the ./source directory.
 ```
 # First, create a source directory and add your voice files
@@ -132,7 +146,38 @@ cp my_voice1.wav my_voice2.wav ./source/
 CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py --batch-dir --script ./my_book.txt
 ```
 
-A Note on Full Reproducibility
+**5. An example run**
+
+I've reduced the max-length to 40 here because the text sample is very short.  If it were larger, the audio output will have random
+noise added to the end of the output.  In situations where you have several hundred characters, this is generally not required.
+
+The default character chunking is set to 450 characters.  I find that setting it to 300 works very well.
+
+The largest file I've processed had nearly 7,000 characters. With a max-characters setting of 300, that generated 24 chunks for processsing.
+When I set it max-characters to 450, there were less chunks but the output had issues.  Strange noises, dropped text, etc.  YMMV.
+
+None of this prevents the current issues with Indian, British, or Austrailian accents being randomly generated in your run.
+I added the -r flag to the script to work around this.  Generate 5 copies with random seeds and the same exaggeration / cfg and you can edit
+the outputs into a reasonable result with a single accent.
+
+
+```
+$ CUBLAS_WORKSPACE_CONFIG=:4096:8 python3 chatterbox-cli.py -f source/test.wav --script test.txt --random-seed --max-length 40
+  from pkg_resources import resource_filename
+[INFO] Generated random seed: 3610432185
+[INFO] Using random seed: 3610432185 and enabling deterministic mode.
+[INFO] Loading model on cuda...
+loaded PerthNet (Implicit) at step 250,000
+
+[INFO] Run 1 - Voice: test.wav
+[INFO] Conditioning voice from test.wav...
+[INFO] Generating audio for 1 chunk(s)...
+  ↳ Chunk 1 [29 chars]: "a big black cat has tiny paws"
+[DONE] Output saved to ./output/test_202506161353_e50_c50_s3610432185.wav
+```
+
+
+### A Note on Full Reproducibility
 
 To achieve 100% bit-for-bit identical audio output between runs, three conditions must be met:
 
@@ -141,7 +186,7 @@ To achieve 100% bit-for-bit identical audio output between runs, three condition
     * Set the CUBLAS_WORKSPACE_CONFIG environment variable before running the script, as shown in the examples. This is required to make certain GPU calculations deterministic.
 
 
-Audio Normalization to Prevent Clipping
+### Audio Normalization to Prevent Clipping
 
 Expressive or exaggerated vocal performances can sometimes generate audio waveforms that exceed the maximum possible level, resulting in harsh digital clipping in the final audio file.
 
